@@ -12,8 +12,8 @@ created/forked from conference.py by wesc on 2014 may 24
 
 # Replace the following lines with client IDs obtained from the APIs
 # Console or Cloud Console.
-WEB_CLIENT_ID = ("934584669707-c67rcq7f5amrcdhabom"
-                 "40knbah2e3i97.apps.googleusercontent.com")
+WEB_CLIENT_ID = ("306340879409-orqar175blnldrtr5r88vh3coll4h3g7.apps."
+                 "googleusercontent.com")
 ANDROID_CLIENT_ID = 'replace with Android client ID'
 IOS_CLIENT_ID = 'replace with iOS client ID'
 ANDROID_AUDIENCE = WEB_CLIENT_ID

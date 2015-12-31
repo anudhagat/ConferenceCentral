@@ -92,8 +92,6 @@ CONF_POST_REQUEST = endpoints.ResourceContainer(
 SESS_POST_REQUEST = endpoints.ResourceContainer(
     SessionForm,
     websafeConferenceKey=messages.StringField(1),
-    typeOfSession=messages.StringField(2),
-    speaker=messages.StringField(3),
 )
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -507,7 +505,7 @@ class ConferenceApi(remote.Service):
                       path=('getConferenceSessionsByType'
                             '/{websafeConferenceKey}'),
                       http_method='POST', name='getConferenceSessionsByType')
-    def getConferenceSessionsByType(self, request, typeOfSession):
+    def getConferenceSessionsByType(self, request):
         """Return sessions for this conference that are of the given type."""
 
         # create ancestor query for all key matches for this conference
