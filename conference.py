@@ -89,10 +89,27 @@ CONF_POST_REQUEST = endpoints.ResourceContainer(
     websafeConferenceKey=messages.StringField(1),
 )
 
+SESS_GET_REQUEST = endpoints.ResourceContainer(
+    message_types.VoidMessage,
+    websafeConferenceKey=messages.StringField(1),
+)
+
+SESS_TYPE_GET_REQUEST = endpoints.ResourceContainer(
+    message_types.VoidMessage,
+    typeOfSession=messages.StringField(1),
+    websafeConferenceKey=messages.StringField(2),
+)
+
+SESS_SPEAKER_GET_REQUEST = endpoints.ResourceContainer(
+    message_types.VoidMessage,
+    speaker=messages.StringField(1),
+)
+
 SESS_POST_REQUEST = endpoints.ResourceContainer(
     SessionForm,
     websafeConferenceKey=messages.StringField(1),
 )
+
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -427,7 +444,7 @@ class ConferenceApi(remote.Service):
         for field in sf.all_fields():
             if hasattr(session, field.name):
                 # convert Date to date string; just copy others
-                if field.name.endswith('date'):
+                if field.name.endswith('date') or field.name.endswith('Time'):
                     setattr(sf, field.name, str(getattr(session, field.name)))
                 else:
                     setattr(sf, field.name, getattr(session, field.name))
@@ -461,11 +478,14 @@ class ConferenceApi(remote.Service):
                 data[df] = SESSION_DEFAULTS[df]
                 setattr(request, df, SESSION_DEFAULTS[df])
 
-        # convert dates from strings to Date objects;
-        # set month based on start_date
+        # convert dates from strings to Date objects
         if data['date']:
             data['date'] = datetime.strptime(data['date'][:10],
                                              "%Y-%m-%d").date()
+        # convert time from strings to Time objects
+        if data['startTime']:
+            data['startTime'] = datetime.strptime(data['startTime'][:10],
+                                                  "%H:%M").time()
 
         # generate Session Key based on Conference ID
         c_key = ndb.Key(urlsafe=request.websafeConferenceKey)
@@ -486,8 +506,8 @@ class ConferenceApi(remote.Service):
         """Create new session."""
         return self._createSessionObject(request)
 
-    @endpoints.method(SESS_POST_REQUEST, SessionForms,
-                      path='getConferenceSessions/{websafeConferenceKey}',
+    @endpoints.method(SESS_GET_REQUEST, SessionForms,
+                      path='getConferenceSessions',
                       http_method='POST', name='getConferenceSessions')
     def getConferenceSessions(self, request):
         """Return sessions for this conference."""
@@ -501,9 +521,8 @@ class ConferenceApi(remote.Service):
                    for session in sessions]
         )
 
-    @endpoints.method(SESS_POST_REQUEST, SessionForms,
-                      path=('getConferenceSessionsByType'
-                            '/{websafeConferenceKey}'),
+    @endpoints.method(SESS_TYPE_GET_REQUEST, SessionForms,
+                      path='getConferenceSessionsByType',
                       http_method='POST', name='getConferenceSessionsByType')
     def getConferenceSessionsByType(self, request):
         """Return sessions for this conference that are of the given type."""
@@ -515,6 +534,22 @@ class ConferenceApi(remote.Service):
         sessions = sessions.filter(Session.typeOfSession ==
                                    listOfTypes)
         # return set of SessionForm objects per Conference
+        return SessionForms(
+            items=[self._copySessionToForm(session)
+                   for session in sessions]
+        )
+
+    @endpoints.method(SESS_SPEAKER_GET_REQUEST, SessionForms,
+                      path='getSessionsBySpeaker',
+                      http_method='POST', name='getSessionsBySpeaker')
+    def getSessionsBySpeaker(self, request):
+        """Return sessions with the given speaker."""
+
+        # query for all sessions with a given speaker
+        sessions = Session.query()
+        sessions = sessions.filter(Session.speaker ==
+                                   request.speaker)
+        # return set of SessionForm objects with that speaker
         return SessionForms(
             items=[self._copySessionToForm(session)
                    for session in sessions]
