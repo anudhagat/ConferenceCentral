@@ -110,6 +110,10 @@ SESS_POST_REQUEST = endpoints.ResourceContainer(
     websafeConferenceKey=messages.StringField(1),
 )
 
+WISHLIST_GET_REQUEST = endpoints.ResourceContainer(
+    message_types.VoidMessage,
+    sessionKey=messages.StringField(1),
+)
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -448,7 +452,7 @@ class ConferenceApi(remote.Service):
                     setattr(sf, field.name, str(getattr(session, field.name)))
                 else:
                     setattr(sf, field.name, getattr(session, field.name))
-            elif field.name == "websafeConferenceKey":
+            elif field.name == "websafeKey":
                 setattr(sf, field.name, session.key.urlsafe())
         sf.check_initialized()
         return sf
@@ -469,7 +473,7 @@ class ConferenceApi(remote.Service):
         # copy SessionForm/ProtoRPC Message into dict
         data = {field.name: getattr(request, field.name)
                 for field in request.all_fields()}
-        del data['websafeConferenceKey']
+        del data['websafeKey']
 
         # add default values for those missing
         # (both data model & outbound Message)
@@ -554,6 +558,67 @@ class ConferenceApi(remote.Service):
             items=[self._copySessionToForm(session)
                    for session in sessions]
         )
+
+    def _addToWishlist(self, request, add=True):
+        """Adds or delete from the user's wishlist sessions."""
+
+        #get profile from user and sessionKey from request
+        prof = self._getProfileFromUser()
+        s_key = request.sessionKey
+
+        #check to see if session is valid
+        # and if user already added this session
+        session = ndb.Key(urlsafe=s_key).get()
+
+        if not session:
+            raise endpoints.NotFoundException(
+                'No session found with key: %s' % s_key)
+        if add:
+            if s_key in prof.sessionsInWishlist:
+                raise ConflictException(
+                    "You have already added this session in your wishlist")
+            else:
+                prof.sessionsInWishlist.append(s_key)
+        else:
+            if s_key in prof.sessionsInWishlist:
+                prof.sessionsInWishlist.remove(s_key)
+        prof.put()
+        session_keys = [ndb.Key(urlsafe=wssk)
+                        for wssk in prof.sessionsInWishlist]
+        sessions = ndb.get_multi(session_keys)
+
+        return SessionForms(items=[self._copySessionToForm(session)
+                            for session in sessions])
+
+    @endpoints.method(WISHLIST_GET_REQUEST, SessionForms,
+                      path='sessions/wishlist/add',
+                      http_method='POST', name='addSessionsToWishlist')
+    def addSessionsToWishlist(self, request):
+        """Return Sessions in WishList for the profile user.
+           Returns the user's updated wishlist."""
+        return self._addToWishlist(request, True)
+
+    @endpoints.method(WISHLIST_GET_REQUEST, SessionForms,
+                      path='sessions/wishlist/delete',
+                      http_method='DELETE', name='deleteSessionInWishlist')
+    def deleteSessionInWishlist(self, request):
+        """Deletes a Session in WishList for the profile user.
+            Returns the user's updated wishlist."""
+        return self._addToWishlist(request, False)
+
+    @endpoints.method(message_types.VoidMessage, SessionForms,
+                      path='sessions/wishlist',
+                      http_method='GET', name='getSessionsInWishlist')
+    def getSessionsInWishlist(self, request):
+        """Get list of sessions that user has added to wishlist."""
+        prof = self._getProfileFromUser()  # get user Profile
+        s_keys = [ndb.Key(urlsafe=wssk)
+                  for wssk in prof.sessionsInWishlist]
+        sessions = ndb.get_multi(s_keys)
+
+        # return set of SessionForm objects per Session
+        return SessionForms(items=[self._copySessionToForm(session)
+                                   for session in sessions])
 
 # - - - Announcements - - - - - - - - - - - - - - - - - - - -
     @staticmethod

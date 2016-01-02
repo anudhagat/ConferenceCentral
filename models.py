@@ -29,6 +29,7 @@ class Profile(ndb.Model):
     mainEmail = ndb.StringProperty()
     teeShirtSize = ndb.StringProperty(default='NOT_SPECIFIED')
     conferenceKeysToAttend = ndb.StringProperty(repeated=True)
+    sessionsInWishlist = ndb.StringProperty(repeated=True)
 
 
 class ProfileMiniForm(messages.Message):
@@ -43,6 +44,7 @@ class ProfileForm(messages.Message):
     mainEmail = messages.StringField(2)
     teeShirtSize = messages.EnumField('TeeShirtSize', 3)
     conferenceKeysToAttend = messages.StringField(4, repeated=True)
+    sessionsInWishlist = messages.StringField(5, repeated=True)
 
 
 class StringMessage(messages.Message):
@@ -113,7 +115,7 @@ class SessionForm(messages.Message):
     date = messages.StringField(6)  # DateTimeField()
     startTime = messages.StringField(7)
     organizerUserId = messages.StringField(8)
-    websafeConferenceKey = messages.StringField(9)
+    websafeKey = messages.StringField(9)
 
 
 class SessionForms(messages.Message):
