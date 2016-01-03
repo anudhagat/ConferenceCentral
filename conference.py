@@ -105,6 +105,11 @@ SESS_SPEAKER_GET_REQUEST = endpoints.ResourceContainer(
     speaker=messages.StringField(1),
 )
 
+SESS_TIME_GET_REQUEST = endpoints.ResourceContainer(
+    message_types.VoidMessage,
+    startTime=messages.StringField(1),
+)
+
 SESS_POST_REQUEST = endpoints.ResourceContainer(
     SessionForm,
     websafeConferenceKey=messages.StringField(1),
@@ -113,6 +118,11 @@ SESS_POST_REQUEST = endpoints.ResourceContainer(
 WISHLIST_GET_REQUEST = endpoints.ResourceContainer(
     message_types.VoidMessage,
     sessionKey=messages.StringField(1),
+)
+
+WISHLIST_SPEAKER_GET_REQUEST = endpoints.ResourceContainer(
+    message_types.VoidMessage,
+    speaker=messages.StringField(1),
 )
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -492,7 +502,7 @@ class ConferenceApi(remote.Service):
                                                   "%H:%M").time()
 
         # generate Session Key based on Conference ID
-        c_key = ndb.Key(urlsafe=request.websafeConferenceKey)
+        c_key = ndb.Key(urlsafe=request.websafeKey)
         s_id = Session.allocate_ids(size=1,
                                     parent=c_key)[0]
         s_key = ndb.Key(Session, s_id, parent=c_key)
@@ -615,6 +625,44 @@ class ConferenceApi(remote.Service):
         s_keys = [ndb.Key(urlsafe=wssk)
                   for wssk in prof.sessionsInWishlist]
         sessions = ndb.get_multi(s_keys)
+
+        # return set of SessionForm objects per Session
+        return SessionForms(items=[self._copySessionToForm(session)
+                                   for session in sessions])
+
+# - - - Two Additional Queries - - - - - - - - - - - - - - -
+
+    @endpoints.method(SESS_TIME_GET_REQUEST, SessionForms,
+                      path='getSessionsByTime',
+                      http_method='POST', name='getSessionsByTime')
+    def getSessionsByTime(self, request):
+        """Return sessions with the given startTime."""
+
+        # query for all sessions with a given speaker
+        sessions = Session.query()
+        # convert str to time objects
+        startTime = datetime.strptime(request.startTime[:10],
+                                      "%H:%M").time()
+        # get all sessions by the specified start time
+        sessions = sessions.filter(Session.startTime ==
+                                   startTime)
+        # return set of SessionForm objects with startTime
+        return SessionForms(
+            items=[self._copySessionToForm(session)
+                   for session in sessions]
+        )
+
+    @endpoints.method(WISHLIST_SPEAKER_GET_REQUEST, SessionForms,
+                      path='sessions/wishlist/speaker',
+                      http_method='GET', name='getSessionsInWishlistBySpeaker')
+    def getSessionsInWishlistBySpeaker(self, request):
+        """Get list of sessions that user has added to wishlist by speaker."""
+        prof = self._getProfileFromUser()  # get user Profile
+        s_keys = [ndb.Key(urlsafe=wssk)
+                  for wssk in prof.sessionsInWishlist]
+        sessions = ndb.get_multi(s_keys)
+
+        sessions = [s for s in sessions if request.speaker == s.speaker]
 
         # return set of SessionForm objects per Session
         return SessionForms(items=[self._copySessionToForm(session)
