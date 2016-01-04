@@ -813,12 +813,18 @@ class ConferenceApi(remote.Service):
                       path='twoInequalitiesQuery',
                       http_method='GET', name='twoInequalitiesQuery')
     def twoInequalitiesQuery(self, request):
-        """Filter Playground"""
-        sessions = Session.query()
-        sessions = sessions.filter(Session.typeOfSession != "Workshop")
-        seven_pm = datetime.strptime("19:00", "%H:%M").time()
+        """Query for all Sessions that are not Workshops and
+        start before 7 pm."""
 
-        sessions = [s for s in sessions if s.startTime < seven_pm]
+        # Query for all Sessions that have a start time earlier than 7 pm
+        seven_pm = datetime.strptime("19:00", "%H:%M").time()
+        sessions = Session.query()
+        sessions = sessions.filter(Session.startTime < seven_pm)
+
+        # To get around the query restriction of qureying with two
+        # inequalities, programmatically remove all sessions that are
+        # workshops.
+        sessions = [s for s in sessions if "Workshop" not in s.typeOfSession]
 
         return SessionForms(
             items=[self._copySessionToForm(session)
