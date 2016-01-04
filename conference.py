@@ -809,5 +809,21 @@ class ConferenceApi(remote.Service):
             items=[self._copyConferenceToForm(conf, "") for conf in q]
         )
 
+    @endpoints.method(message_types.VoidMessage, SessionForms,
+                      path='twoInequalitiesQuery',
+                      http_method='GET', name='twoInequalitiesQuery')
+    def twoInequalitiesQuery(self, request):
+        """Filter Playground"""
+        sessions = Session.query()
+        sessions = sessions.filter(Session.typeOfSession != "Workshop")
+        seven_pm = datetime.strptime("19:00", "%H:%M").time()
+
+        sessions = [s for s in sessions if s.startTime < seven_pm]
+
+        return SessionForms(
+            items=[self._copySessionToForm(session)
+                   for session in sessions]
+        )
+
 
 api = endpoints.api_server([ConferenceApi])  # register API
