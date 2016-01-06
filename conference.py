@@ -50,6 +50,8 @@ from utils import getUserId
 EMAIL_SCOPE = endpoints.EMAIL_SCOPE
 API_EXPLORER_CLIENT_ID = endpoints.API_EXPLORER_CLIENT_ID
 MEMCACHE_ANNOUNCEMENTS_KEY = "RECENT_ANNOUNCEMENTS"
+MEMCACHE_FEATURED_SPEAKER_KEY = "FEATURED_SPEAKER"
+ANNOUNCEMENT_FEATURED_SPEAKER = ('Featured Speaker: %s; Sessions: %s')
 ANNOUNCEMENT_TPL = ('Last chance to attend! The following conferences '
                     'are nearly sold out: %s')
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -509,6 +511,20 @@ class ConferenceApi(remote.Service):
         data['key'] = s_key
         data['organizerUserId'] = request.organizerUserId = user_id
 
+        # check to see if this speaker has more than one session
+        sessions = Session.query(ancestor=c_key)
+        sessions = sessions.filter(Session.speaker == data['speaker'])
+
+        # if this speaker already has a session, then he/she becomes
+        # the featured speaker. Concatenate all the session names and
+        # create a announcement with the featured speaker.
+        # Set the memcache with the announcement.
+        if sessions:
+            announcement = ANNOUNCEMENT_FEATURED_SPEAKER % \
+                (data['speaker'], ', '.join(s.name for s in sessions))
+            announcement = announcement + ', ' + data['name']
+            memcache.set(MEMCACHE_FEATURED_SPEAKER_KEY, announcement)
+
         # create Session and return (modified) SessionForm
         Session(**data).put()
         return request
@@ -700,6 +716,14 @@ class ConferenceApi(remote.Service):
         """Return Announcement from memcache."""
         return StringMessage(data=memcache.get(MEMCACHE_ANNOUNCEMENTS_KEY)
                              or "")
+
+    @endpoints.method(message_types.VoidMessage, StringMessage,
+                      path='sessions/featured/get',
+                      http_method='GET', name='getFeaturedSpeaker')
+    def getFeaturedSpeaker(self, request):
+        """Return Featured Speaker from memcache."""
+        featured = memcache.get(MEMCACHE_FEATURED_SPEAKER_KEY).split(";")[0]
+        return StringMessage(data=featured or "")
 
 # - - - Registration - - - - - - - - - - - - - - - - - - - -
 
