@@ -481,6 +481,18 @@ class ConferenceApi(remote.Service):
         if not request.name:
             raise endpoints.BadRequestException("Session 'name' "
                                                 "field required")
+        # only existing conferences can have sessions: do query and check
+        conf = ndb.Key(urlsafe=request.websafeKey).get()
+        # check that conference exists
+        if not conf:
+            raise endpoints.NotFoundException("No conference found with "
+                                              "key: %s"
+                                              % request.websafeKey)
+
+        # check that user is owner
+        if user_id != conf.organizerUserId:
+            raise endpoints.ForbiddenException(
+                'Only the owner can create a session.')
 
         # copy SessionForm/ProtoRPC Message into dict
         data = {field.name: getattr(request, field.name)
@@ -511,22 +523,14 @@ class ConferenceApi(remote.Service):
         data['key'] = s_key
         data['organizerUserId'] = request.organizerUserId = user_id
 
-        # check to see if this speaker has more than one session
-        sessions = Session.query(ancestor=c_key)
-        sessions = sessions.filter(Session.speaker == data['speaker'])
-
-        # if this speaker already has a session, then he/she becomes
-        # the featured speaker. Concatenate all the session names and
-        # create a announcement with the featured speaker.
-        # Set the memcache with the announcement.
-        if sessions:
-            announcement = ANNOUNCEMENT_FEATURED_SPEAKER % \
-                (data['speaker'], ', '.join(s.name for s in sessions))
-            announcement = announcement + ', ' + data['name']
-            memcache.set(MEMCACHE_FEATURED_SPEAKER_KEY, announcement)
-
         # create Session and return (modified) SessionForm
         Session(**data).put()
+
+        # add a task to set the featured speaker
+        taskqueue.add(params={'speaker': data['speaker'],
+                              'c_key': c_key},
+                      url='/tasks/set_featured_speaker')
+
         return request
 
     @endpoints.method(SessionForm, SessionForm,
@@ -717,6 +721,28 @@ class ConferenceApi(remote.Service):
         return StringMessage(data=memcache.get(MEMCACHE_ANNOUNCEMENTS_KEY)
                              or "")
 
+    @staticmethod
+    def _speakerAnnouncement(c_key, speaker):
+        """Create Featured Speaker Announcement & assign to
+        memcache; used by memcache cron job.
+        """
+        announcement = ""
+
+        # check to see if this speaker has more than one session
+        sessions = Session.query(ancestor=c_key)
+        sessions = sessions.filter(Session.speaker == speaker)
+
+        # if this speaker already has a session, then he/she becomes
+        # the featured speaker. Concatenate all the session names and
+        # create a announcement with the featured speaker.
+        # Set the memcache with the announcement.
+        if sessions.length > 1:
+            announcement = ANNOUNCEMENT_FEATURED_SPEAKER % \
+                (speaker, ', '.join(s.name for s in sessions))
+            memcache.set(MEMCACHE_FEATURED_SPEAKER_KEY, announcement)
+
+        return announcement
+
     @endpoints.method(message_types.VoidMessage, StringMessage,
                       path='sessions/featured/get',
                       http_method='GET', name='getFeaturedSpeaker')
@@ -833,6 +859,7 @@ class ConferenceApi(remote.Service):
             items=[self._copyConferenceToForm(conf, "") for conf in q]
         )
 
+# - - - Query Problem with two inequalities - - - - - - - - - - - -
     @endpoints.method(message_types.VoidMessage, SessionForms,
                       path='twoInequalitiesQuery',
                       http_method='GET', name='twoInequalitiesQuery')
