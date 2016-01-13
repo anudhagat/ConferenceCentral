@@ -482,12 +482,12 @@ class ConferenceApi(remote.Service):
             raise endpoints.BadRequestException("Session 'name' "
                                                 "field required")
         # only existing conferences can have sessions: do query and check
-        conf = ndb.Key(urlsafe=request.websafeKey).get()
+        conf = ndb.Key(urlsafe=request.websafeConferenceKey).get()
         # check that conference exists
         if not conf:
             raise endpoints.NotFoundException("No conference found with "
                                               "key: %s"
-                                              % request.websafeKey)
+                                              % request.websafeConferenceKey)
 
         # check that user is owner
         if user_id != conf.organizerUserId:
@@ -497,6 +497,7 @@ class ConferenceApi(remote.Service):
         # copy SessionForm/ProtoRPC Message into dict
         data = {field.name: getattr(request, field.name)
                 for field in request.all_fields()}
+        del data['websafeConferenceKey']
         del data['websafeKey']
 
         # add default values for those missing
@@ -516,7 +517,7 @@ class ConferenceApi(remote.Service):
                                                   "%H:%M").time()
 
         # generate Session Key based on Conference ID
-        c_key = ndb.Key(urlsafe=request.websafeKey)
+        c_key = conf.key
         s_id = Session.allocate_ids(size=1,
                                     parent=c_key)[0]
         s_key = ndb.Key(Session, s_id, parent=c_key)
@@ -528,21 +529,21 @@ class ConferenceApi(remote.Service):
 
         # add a task to set the featured speaker
         taskqueue.add(params={'speaker': data['speaker'],
-                              'c_key': c_key},
+                              'c_key': request.websafeConferenceKey},
                       url='/tasks/set_featured_speaker')
 
-        return request
+        return self._copySessionToForm(s_key.get())
 
-    @endpoints.method(SessionForm, SessionForm,
-                      path='session',
+    @endpoints.method(SESS_POST_REQUEST, SessionForm,
+                      path='session/{websafeConferenceKey}',
                       http_method='POST', name='createSession')
     def createSession(self, request):
         """Create new session."""
         return self._createSessionObject(request)
 
     @endpoints.method(SESS_GET_REQUEST, SessionForms,
-                      path='getConferenceSessions',
-                      http_method='POST', name='getConferenceSessions')
+                      path='sessions/get',
+                      http_method='GET', name='getConferenceSessions')
     def getConferenceSessions(self, request):
         """Return sessions for this conference."""
 
@@ -556,7 +557,7 @@ class ConferenceApi(remote.Service):
         )
 
     @endpoints.method(SESS_TYPE_GET_REQUEST, SessionForms,
-                      path='getConferenceSessionsByType',
+                      path='sessions/{websafeConferenceKey}/{typeOfSession}',
                       http_method='POST', name='getConferenceSessionsByType')
     def getConferenceSessionsByType(self, request):
         """Return sessions for this conference that are of the given type."""
@@ -564,9 +565,9 @@ class ConferenceApi(remote.Service):
         # create ancestor query for all key matches for this conference
         c_key = ndb.Key(urlsafe=request.websafeConferenceKey)
         sessions = Session.query(ancestor=c_key)
-        listOfTypes = ''.join(str(x) for x in request.typeOfSession)
-        sessions = sessions.filter(Session.typeOfSession ==
-                                   listOfTypes)
+        listOfTypes = [request.typeOfSession]
+        sessions = sessions.filter(Session.typeOfSession
+                                          .IN(listOfTypes))
         # return set of SessionForm objects per Conference
         return SessionForms(
             items=[self._copySessionToForm(session)
@@ -574,7 +575,7 @@ class ConferenceApi(remote.Service):
         )
 
     @endpoints.method(SESS_SPEAKER_GET_REQUEST, SessionForms,
-                      path='getSessionsBySpeaker',
+                      path='sessions/speaker',
                       http_method='POST', name='getSessionsBySpeaker')
     def getSessionsBySpeaker(self, request):
         """Return sessions with the given speaker."""
@@ -653,12 +654,12 @@ class ConferenceApi(remote.Service):
 # - - - Two Additional Queries - - - - - - - - - - - - - - -
 
     @endpoints.method(SESS_TIME_GET_REQUEST, SessionForms,
-                      path='getSessionsByTime',
+                      path='sessions/time',
                       http_method='POST', name='getSessionsByTime')
     def getSessionsByTime(self, request):
         """Return sessions with the given startTime."""
 
-        # query for all sessions with a given speaker
+        # query for all sessions that start at the given start time.
         sessions = Session.query()
         # convert str to time objects
         startTime = datetime.strptime(request.startTime[:10],
@@ -728,27 +729,26 @@ class ConferenceApi(remote.Service):
         """
         announcement = ""
 
+        wsck = ndb.Key(urlsafe=c_key)
         # check to see if this speaker has more than one session
-        sessions = Session.query(ancestor=c_key)
+        sessions = Session.query(ancestor=wsck)
         sessions = sessions.filter(Session.speaker == speaker)
 
         # if this speaker already has a session, then he/she becomes
         # the featured speaker. Concatenate all the session names and
         # create a announcement with the featured speaker.
         # Set the memcache with the announcement.
-        if sessions.length > 1:
+        if sessions.count() > 1:
             announcement = ANNOUNCEMENT_FEATURED_SPEAKER % \
                 (speaker, ', '.join(s.name for s in sessions))
             memcache.set(MEMCACHE_FEATURED_SPEAKER_KEY, announcement)
-
-        return announcement
 
     @endpoints.method(message_types.VoidMessage, StringMessage,
                       path='sessions/featured/get',
                       http_method='GET', name='getFeaturedSpeaker')
     def getFeaturedSpeaker(self, request):
         """Return Featured Speaker from memcache."""
-        featured = memcache.get(MEMCACHE_FEATURED_SPEAKER_KEY).split(";")[0]
+        featured = memcache.get(MEMCACHE_FEATURED_SPEAKER_KEY)
         return StringMessage(data=featured or "")
 
 # - - - Registration - - - - - - - - - - - - - - - - - - - -
