@@ -28,7 +28,8 @@ class SetAnnouncementHandler(webapp2.RequestHandler):
 class SetFeaturedSpeakerHandler(webapp2.RequestHandler):
     def post(self):
         """Sets Featured Speaker in Memcache."""
-        ConferenceApi._speakerAnnouncement(request.c_key, request.speaker)
+        ConferenceApi._speakerAnnouncement(self.request.get('c_key'),
+                                           self.request.get('speaker'))
 
 
 class SendConfirmationEmailHandler(webapp2.RequestHandler):
