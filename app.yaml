@@ -36,6 +36,9 @@ handlers:       # static then dynamic
 - url: /crons/set_announcement
   script: main.app
 
+- url: /tasks/set_featured_speaker
+  script: main.app
+
 - url: /_ah/spi/.*
   script: conference.api
   secure: always
